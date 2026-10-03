@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Smart Attendance</title>
+</head>
+<body>
+
+    <h1>Student Smart Attendance System</h1>
+
+    <button onclick="startCamera()">Start Camera</button>
+
+    <br><br>
+
+    <video id="camera" width="640" height="480" autoplay></video>
+
+    <script>
+        function startCamera() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function(stream) {
+                    document.getElementById("camera").srcObject = stream;
+                })
+                .catch(function(error) {
+                    console.log(error);
+                    alert("Camera access denied or unavailable.");
+                });
+        }
+    </script>
+
+</body>
+</html>

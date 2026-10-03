@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Student Smart Attendance</title>
+
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f4f7;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #222;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        video {
+            width: 100%;
+            max-width: 640px;
+            border-radius: 12px;
+            background: black;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        button {
+            padding: 12px 20px;
+            margin: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #startBtn {
+            background: #28a745;
+            color: white;
+        }
+
+        #stopBtn {
+            background: #dc3545;
+            color: white;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .student {
+            margin-top: 15px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .student h2 {
+            margin: 5px 0 15px;
+            font-size: 30px;
+            color: #222;
+        }
+
+        .student p {
+            margin: 8px;
+            font-size: 18px;
+        }
+
+        /* Green attendance message */
+
+        .attendance-success {
+            margin-top: 15px;
+            padding: 14px;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        /* Warning message */
+
+        .attendance-warning {
+            margin-top: 15px;
+            padding: 14px;
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        /* Error message */
+
+        .error-message {
+            color: red;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+<div class="container">
+
+    <h1>Student Smart Attendance System</h1>
+
+    <video
+        id="video"
+        autoplay
+        playsinline>
+    </video>
+
+    <canvas id="canvas"></canvas>
+
+    <br>
+
+    <button id="startBtn">
+        Start Camera
+    </button>
+
+    <button id="stopBtn">
+        Stop Camera
+    </button>
+
+    <div id="status">
+        Camera is stopped
+    </div>
+
+    <div id="result"></div>
+
+</div>
+
+
+<script>
+
+const video = document.getElementById("video");
+
+const canvas = document.getElementById("canvas");
+
+const context = canvas.getContext("2d");
+
+const startBtn = document.getElementById("startBtn");
+
+const stopBtn = document.getElementById("stopBtn");
+
+const statusText = document.getElementById("status");
+
+const resultDiv = document.getElementById("result");
+
+
+let stream = null;
+
+let recognitionRunning = false;
+
+let processing = false;
+
+
+// ==================================================
+// START CAMERA
+// ==================================================
+
+startBtn.addEventListener("click", async function () {
+
+    try {
+
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+        });
+
+        video.srcObject = stream;
+
+        recognitionRunning = true;
+
+        statusText.innerText =
+            "Camera started. Look at the camera.";
+
+        statusText.style.color = "#222";
+
+        resultDiv.innerHTML = "";
+
+        recognizeFace();
+
+    }
+
+    catch (error) {
+
+        console.error("Camera error:", error);
+
+        statusText.innerText =
+            "Camera permission denied or unavailable.";
+
+        statusText.style.color = "red";
+
+    }
+
+});
+
+
+// ==================================================
+// STOP CAMERA
+// ==================================================
+
+stopBtn.addEventListener("click", function () {
+
+    recognitionRunning = false;
+
+    processing = false;
+
+    if (stream) {
+
+        stream.getTracks().forEach(
+            track => track.stop()
+        );
+
+        stream = null;
+
+    }
+
+    video.srcObject = null;
+
+    statusText.innerText =
+        "Camera stopped.";
+
+    statusText.style.color = "#222";
+
+    resultDiv.innerHTML = "";
+
+});
+
+
+// ==================================================
+// FACE RECOGNITION
+// ==================================================
+
+async function recognizeFace() {
+
+    if (!recognitionRunning) {
+        return;
+    }
+
+
+    if (processing) {
+
+        setTimeout(
+            recognizeFace,
+            1000
+        );
+
+        return;
+
+    }
+
+
+    if (
+        video.readyState < 2 ||
+        video.videoWidth === 0 ||
+        video.videoHeight === 0
+    ) {
+
+        setTimeout(
+            recognizeFace,
+            1000
+        );
+
+        return;
+
+    }
+
+
+    processing = true;
+
+
+    // ----------------------------------------------
+    // Capture camera image
+    // ----------------------------------------------
+
+    canvas.width = video.videoWidth;
+
+    canvas.height = video.videoHeight;
+
+
+    context.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    const image = canvas.toDataURL(
+        "image/jpeg",
+        0.8
+    );
+
+
+    try {
+
+        // ------------------------------------------
+        // Send image to Flask
+        // ------------------------------------------
+
+        const response = await fetch(
+            "/recognize",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body: JSON.stringify({
+                    image: image
+                })
+            }
+        );
+
+
+        // ------------------------------------------
+        // SAFE RESPONSE READING
+        // ------------------------------------------
+
+        const responseText =
+            await response.text();
+
+
+        console.log(
+            "Server status:",
+            response.status
+        );
+
+
+        console.log(
+            "Server response:",
+            responseText
+        );
+
+
+        // Empty response check
+
+        if (!responseText) {
+
+            throw new Error(
+                "Flask returned an empty response."
+            );
+
+        }
+
+
+        // ------------------------------------------
+        // Convert response to JSON
+        // ------------------------------------------
+
+        let data;
+
+
+        try {
+
+            data = JSON.parse(
+                responseText
+            );
+
+        }
+
+        catch (jsonError) {
+
+            throw new Error(
+                "Flask returned invalid JSON: " +
+                responseText
+            );
+
+        }
+
+
+        console.log(
+            "Parsed server data:",
+            data
+        );
+
+
+        // ==================================================
+        // FLASK SUCCESS
+        // ==================================================
+
+        if (data.success) {
+
+
+            // ----------------------------------------------
+            // FACE RECOGNIZED
+            // ----------------------------------------------
+
+            if (
+                data.results &&
+                data.results.length > 0
+            ) {
+
+
+                let html = "";
+
+
+                data.results.forEach(
+                    student => {
+
+
+                        // ----------------------------------
+                        // Student Name and ID
+                        // ----------------------------------
+
+                        html += `
+
+                            <div class="student">
+
+                                <h2>
+                                    ${student.name}
+                                </h2>
+
+                                <p>
+                                    <strong>
+                                        Student ID:
+                                    </strong>
+
+                                    ${student.id}
+                                </p>
+
+                                <p>
+                                    <strong>
+                                        Confidence:
+                                    </strong>
+
+                                    ${student.confidence}
+                                </p>
+                        `;
+
+
+                        // ==================================
+                        // ATTENDANCE MARKED
+                        // ==================================
+
+                        if (
+                            student.status ===
+                            "Attendance Marked"
+                        ) {
+
+                            html += `
+
+                                <div class="attendance-success">
+
+                                    ✓ Attendance Marked Successfully
+
+                                </div>
+
+                            `;
+
+                        }
+
+
+                        // ==================================
+                        // ALREADY MARKED
+                        // ==================================
+
+                        else if (
+                            student.status ===
+                            "Already Marked Today"
+                        ) {
+
+                            html += `
+
+                                <div class="attendance-success">
+
+                                    ✓ Your attendance is already completed
+
+                                </div>
+
+                            `;
+
+                        }
+
+
+                        // ==================================
+                        // UNKNOWN STUDENT
+                        // ==================================
+
+                        else if (
+                            student.status ===
+                            "Unknown Student"
+                        ) {
+
+                            html += `
+
+                                <div class="attendance-warning">
+
+                                    Student is not registered.
+
+                                </div>
+
+                            `;
+
+                        }
+
+
+                        // ==================================
+                        // OTHER STATUS
+                        // ==================================
+
+                        else {
+
+                            html += `
+
+                                <div class="attendance-warning">
+
+                                    ${student.status}
+
+                                </div>
+
+                            `;
+
+                        }
+
+
+                        html += `
+
+                            </div>
+
+                        `;
+
+                    }
+                );
+
+
+                resultDiv.innerHTML = html;
+
+
+                statusText.innerText =
+                    "Student recognized successfully.";
+
+                statusText.style.color =
+                    "#155724";
+
+            }
+
+
+            // ==================================================
+            // NO FACE
+            // ==================================================
+
+            else {
+
+                resultDiv.innerHTML = `
+
+                    <p>
+                        No face detected.
+                    </p>
+
+                `;
+
+                statusText.innerText =
+                    "Looking for a face...";
+
+                statusText.style.color =
+                    "#222";
+
+            }
+
+        }
+
+
+        // ==================================================
+        // FLASK ERROR
+        // ==================================================
+
+        else {
+
+            resultDiv.innerHTML = `
+
+                <p class="error-message">
+
+                    ${data.message ||
+                    "Face recognition failed."}
+
+                </p>
+
+            `;
+
+        }
+
+    }
+
+
+    catch (error) {
+
+        console.error(
+            "Connection error:",
+            error
+        );
+
+
+        resultDiv.innerHTML = `
+
+            <p class="error-message">
+
+                Server connection error:
+                ${error.message}
+
+            </p>
+
+        `;
+
+    }
+
+
+    processing = false;
+
+
+    // ==================================================
+    // CONTINUE RECOGNITION
+    // ==================================================
+
+    if (recognitionRunning) {
+
+        setTimeout(
+            recognizeFace,
+            1500
+        );
+
+    }
+
+}
+
+</script>
+
+</body>
+
+</html>
